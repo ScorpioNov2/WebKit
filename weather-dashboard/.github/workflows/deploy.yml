@@ -1,0 +1,124 @@
+name: Deploy Weather Dashboard to GitHub Pages
+
+on:
+  push:
+    branches: [ weather-dashboard ]
+    paths:
+      - 'weather-dashboard/**'
+      - '.github/workflows/deploy.yml'
+  pull_request:
+    branches: [ weather-dashboard ]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: weather-dashboard/react/package.json
+
+      - name: Install dependencies
+        run: cd weather-dashboard/react && npm install
+
+      - name: Build React app
+        run: cd weather-dashboard/react && npm run build
+        env:
+          REACT_APP_API_URL: ${{ secrets.REACT_APP_API_URL || 'https://api.open-meteo.com' }}
+
+      - name: Copy vanilla version to build
+        run: |
+          mkdir -p weather-dashboard/react/build
+          cp weather-dashboard/vanilla/index.html weather-dashboard/react/build/vanilla.html
+
+      - name: Create index for vanilla version option
+        run: |
+          cat > weather-dashboard/react/build/index-vanilla.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>Weather Dashboard - Version Selection</title>
+              <style>
+                  * { margin: 0; padding: 0; box-sizing: border-box; }
+                  body {\n                      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                      min-height: 100vh;
+                      display: flex;
+                      justify-content: center;
+                      align-items: center;
+                      padding: 20px;
+                  }
+                  .container {\n                      background: white;
+                      border-radius: 20px;
+                      padding: 40px;
+                      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+                      max-width: 600px;
+                      text-align: center;
+                  }
+                  h1 {\n                      font-size: 2.5em;
+                      color: #333;
+                      margin-bottom: 20px;
+                  }
+                  p {\n                      color: #666;
+                      margin-bottom: 30px;
+                      line-height: 1.6;
+                  }
+                  .buttons {\n                      display: flex;
+                      gap: 20px;
+                      flex-direction: column;
+                  }
+                  a {\n                      display: inline-block;
+                      padding: 15px 30px;
+                      border-radius: 50px;
+                      text-decoration: none;
+                      font-weight: bold;
+                      font-size: 1.1em;
+                      transition: transform 0.3s, box-shadow 0.3s;
+                  }
+                  .btn-react {\n                      background: #667eea;
+                      color: white;
+                  }
+                  .btn-vanilla {\n                      background: #ff6b6b;
+                      color: white;
+                  }
+                  a:hover {\n                      transform: translateY(-3px);
+                      box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
+                  }
+              </style>\n          </head>\n          <body>\n              <div class="container">\n                  <h1>🌤️ Weather Dashboard</h1>\n                  <p>Choose your preferred version:</p>\n                  <div class="buttons">\n                      <a href="./index.html" class="btn-react">React Version (Recommended)</a>\n                      <a href="./vanilla.html" class="btn-vanilla">Vanilla HTML/CSS/JS</a>\n                  </div>\n              </div>\n          </body>\n          </html>\n          EOF
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v3
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v2
+        with:
+          path: 'weather-dashboard/react/build'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v2
+
+      - name: Create deployment status comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '✅ **Deployment Preview Ready!**\n\n🌐 GitHub Pages will be available at:\n`https://${{ github.repository_owner }}.github.io/WebKit/`\n\n(After merging to weather-dashboard branch)'
+            })
